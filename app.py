@@ -1,158 +1,83 @@
-from flask import Flask, request, jsonify
-import nltk
-from nltk.tokenize import word_tokenize
+# from flask import Flask, request, render_template, jsonify
+# from haystack.document_stores import InMemoryDocumentStore
+# from haystack.nodes import EmbeddingRetriever, FARMReader
+# from haystack.pipelines import ExtractiveQAPipeline
 
+# # Setup básico do Flask
+# app = Flask(__name__)
 
-nltk.download('punkt_tab')
+# # Carrega o conteúdo
+# with open("oketa.txt", "r", encoding="utf-8") as f:
+#     texto_base = f.read()
 
+# # Inicializa a base de conhecimento
+# document_store = InMemoryDocumentStore(embedding_dim=384)
+# document_store.write_documents([{"content": texto_base, "meta": {"name": "oketa"}}])
+
+# retriever = EmbeddingRetriever(
+#     document_store=document_store,
+#     embedding_model="sentence-transformers/all-MiniLM-L6-v2"
+# )
+
+# document_store.update_embeddings(retriever)
+
+# reader = FARMReader(model_name_or_path="deepset/roberta-base-squad2", use_gpu=False)
+
+# pipeline = ExtractiveQAPipeline(reader, retriever)
+# @app.route("/")
+# def index():
+#     return render_template("index.html")
+
+# @app.route("/chat", methods=["POST"])
+# def chat():
+#     data = request.get_json()
+#     pergunta = data.get("mensagem", "")
+#     resposta = pipeline.run(query=pergunta, params={"Retriever": {"top_k": 3}, "Reader": {"top_k": 2}})
+
+#     resposta_texto = resposta["answers"][0].answer
+#     return jsonify({"resposta": resposta_texto})
+  
+# if __name__ == "__main__":
+#     app.run(debug=True)
+from flask import Flask, request, render_template, jsonify
+from sentence_transformers import SentenceTransformer, util
+import torch
 
 app = Flask(__name__)
 
+# Carrega o modelo de IA leve
+modelo = SentenceTransformer("all-MiniLM-L6-v2")
 
-# Tópicos e respostas focados no tijolo ecológico
-topicos_permitidos = ["tijolo", "ecológico", "produto", "sim", "comprar", "compra"]
+# Lê o FAQ estruturado
+faq = []
+with open("oketa_faq.txt", "r", encoding="utf-8") as f:
+    bloco = f.read().split("\n\n")
+    for item in bloco:
+        if "Pergunta:" in item and "Resposta:" in item:
+            pergunta = item.split("Pergunta:")[1].split("Resposta:")[0].strip()
+            resposta = item.split("Resposta:")[1].strip()
+            faq.append({"pergunta": pergunta, "resposta": resposta})
 
-
-respostas = {
-    "tijolo": "Nosso tijolo ecológico é feito com resíduos de açaí e fibra de aninga. É resistente, sustentável e acessível!",
-    "ecológico": "O tijolo ecológico é uma opção sustentável para construção civil, utilizando materiais naturais e renováveis.",
-    "produto": "Estamos oferecendo o tijolo ecológico feito com açaí e fibra de aninga. Você gostaria de adquirir?",
-    "sim": "Ótimo! Clique no botão abaixo para fazer seu pedido agora mesmo.",
-    "comprar": "Ótimo! Clique no botão abaixo para fazer seu pedido agora mesmo.",
-    "compra": "Você pode clicar no botão 'Adquirir Produto' para garantir seu tijolo ecológico!"
-}
-
-
-def verificar_contexto(pergunta):
-    tokens = word_tokenize(pergunta.lower())
-    for token in tokens:
-        if token in topicos_permitidos:
-            return token
-    return None
-
+# Pré-processa todas as perguntas do FAQ
+perguntas_faq = [item["pergunta"] for item in faq]
+embeddings_faq = modelo.encode(perguntas_faq, convert_to_tensor=True)
 
 @app.route("/")
 def index():
-    html = """
-    <!DOCTYPE html>
-    <html lang="pt-br">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-      <title>Chatbot Tijolo Ecológico</title>
-      <style>
-        body { font-family: Arial, sans-serif; }
-        #chatbot-container {
-          display: none;
-          position: fixed;
-          bottom: 80px;
-          right: 20px;
-          width: 300px;
-          border: 1px solid #ccc;
-          border-radius: 10px;
-          padding: 10px;
-          background-color: #f9f9f9;
-          box-shadow: 0 0 10px rgba(0,0,0,0.2);
-        }
-        #mensagens {
-          height: 200px;
-          overflow-y: auto;
-          margin-bottom: 10px;
-        }
-        #mensagens div {
-          margin: 5px 0;
-        }
-        #chatbot-button {
-          position: fixed;
-          bottom: 20px;
-          right: 20px;
-          padding: 15px;
-          border-radius: 50%;
-          background-color: #4CAF50;
-          color: white;
-          font-size: 18px;
-          border: none;
-          cursor: pointer;
-        }
-      </style>
-    </head>
-    <body>
-      <button id="chatbot-button">💬</button>
-
-
-      <div id="chatbot-container">
-        <div id="mensagens"></div>
-        <input type="text" id="entrada" placeholder="Pergunte sobre o nosso tijolo ecológico..." />
-        <button onclick="enviarMensagem()">Enviar</button>
-        <div id="botao-compra" style="margin-top: 10px; display: none;">
-          <a href="https://wa.me/5598999999999?text=Tenho%20interesse%20no%20tijolo%20ecol%C3%B3gico!" target="_blank">
-            <button style="width: 100%; padding: 10px; background-color: #4CAF50; color: white; border: none; border-radius: 5px;">Adquirir Produto</button>
-          </a>
-        </div>
-      </div>
-
-
-      <script>
-        const botao = document.getElementById("chatbot-button");
-        const container = document.getElementById("chatbot-container");
-
-
-        botao.addEventListener("click", () => {
-          container.style.display = container.style.display === "none" ? "block" : "none";
-        });
-
-
-        async function enviarMensagem() {
-          const entrada = document.getElementById("entrada");
-          const mensagens = document.getElementById("mensagens");
-          const botaoCompra = document.getElementById("botao-compra");
-
-
-          const pergunta = entrada.value;
-          if (!pergunta) return;
-
-
-          mensagens.innerHTML += `<div><strong>Você:</strong> ${pergunta}</div>`;
-          entrada.value = "";
-
-
-          const resposta = await fetch("/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mensagem: pergunta })
-          }).then(res => res.json());
-
-
-          mensagens.innerHTML += `<div><strong>Bot:</strong> ${resposta.resposta}</div>`;
-          mensagens.scrollTop = mensagens.scrollHeight;
-
-
-          if (resposta.resposta.toLowerCase().includes("clique no botão")) {
-            botaoCompra.style.display = "block";
-          } else {
-            botaoCompra.style.display = "none";
-          }
-        }
-      </script>
-    </body>
-    </html>
-    """
-    return html
-
+    return render_template("index.html")
 
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.get_json()
-    mensagem = data.get("mensagem", "")
-    topico = verificar_contexto(mensagem)
-    if topico:
-        resposta = respostas[topico]
-    else:
-        resposta = "Desculpe, só posso responder perguntas sobre nosso produto: o tijolo ecológico feito com açaí e fibra de aninga."
-    return jsonify({"resposta": resposta})
+    pergunta_usuario = data.get("mensagem", "")
+    embedding_pergunta = modelo.encode(pergunta_usuario, convert_to_tensor=True)
 
+    # Compara a pergunta do usuário com todas do FAQ
+    similaridades = util.cos_sim(embedding_pergunta, embeddings_faq)
+    indice_mais_proximo = torch.argmax(similaridades).item()
+
+    resposta = faq[indice_mais_proximo]["resposta"]
+    return jsonify({"resposta": resposta})
 
 if __name__ == "__main__":
     app.run(debug=True)
-
-

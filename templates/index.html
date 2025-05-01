@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Chat Oketá</title>
+  <style>
+    body { font-family: Arial; margin: 20px; }
+    #mensagens { height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+    #mensagens div { margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <h2>Chat do Oketá 🧱🌱</h2>
+  <div id="mensagens"></div>
+  <input type="text" id="entrada" placeholder="Pergunte algo sobre o Oketá..." style="width: 80%;">
+  <button onclick="enviar()">Enviar</button>
+
+  <script>
+    async function enviar() {
+      const entrada = document.getElementById("entrada");
+      const mensagens = document.getElementById("mensagens");
+      const texto = entrada.value;
+      if (!texto) return;
+
+      mensagens.innerHTML += `<div><strong>Você:</strong> ${texto}</div>`;
+      entrada.value = "";
+
+      const resposta = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mensagem: texto })
+      }).then(res => res.json());
+
+      mensagens.innerHTML += `<div><strong>Oketá:</strong> ${resposta.resposta}</div>`;
+      mensagens.scrollTop = mensagens.scrollHeight;
+    }
+  </script>
+</body>
+</html>
