@@ -108,7 +108,7 @@ embeddings_faq = modelo.encode(perguntas_faq, convert_to_tensor=True)
 
 @app.route("/")
 def index():
-    session.clear()  # limpa histórico ao recarregar a página
+    session.clear()
     return render_template("index.html")
 
 @app.route("/chat", methods=["POST"])
@@ -116,33 +116,46 @@ def chat():
     data = request.get_json()
     pergunta_usuario = data.get("mensagem", "").strip().lower()
 
-    # Cria histórico se não existir
     if "historico" not in session:
         session["historico"] = []
 
-    # Verifica se a resposta foi "sim"
+    # Encerramento manual
+    if pergunta_usuario in ["não", "nao", "não obrigado", "nao obrigado"]:
+        resposta = "Tudo bem! Se quiser conversar mais sobre o projeto Oketá, estarei por aqui. 🌱"
+        session["fim_conversa"] = True
+        session["historico"].append({"pergunta": pergunta_usuario, "resposta": resposta})
+        return jsonify({"resposta": resposta})
+
+    # Continuação com "sim"
     if pergunta_usuario in ["sim", "claro", "pode ser", "sim por favor"]:
         if "ultimo_indice" in session:
             proximo_indice = session["ultimo_indice"] + 1
-            if proximo_indice < len(faq):
-                resposta = faq[proximo_indice]["resposta"]
-                session["ultimo_indice"] = proximo_indice
-            else:
-                resposta = "Você chegou ao fim das perguntas disponíveis. Deseja perguntar outra coisa?"
         else:
-            resposta = "Você pode começar perguntando algo sobre o projeto Oketá!"
+            proximo_indice = -1
+
+        if proximo_indice == -1:
+            resposta = "Desculpe, não consegui entender sua pergunta. Poderia reformular?"
+        elif proximo_indice < len(faq):
+            resposta = faq[proximo_indice]["resposta"]
+            session["ultimo_indice"] = proximo_indice
+        else:
+            resposta = "Muito obrigado por consultar o projeto Oketá! 🌱 Ficamos felizes em ajudar. Até a próxima!"
+            session["fim_conversa"] = True
+
     else:
-        # Calcula similaridade como antes
+        # Resposta baseada em similaridade
         embedding_pergunta = modelo.encode(pergunta_usuario, convert_to_tensor=True)
         similaridades = util.cos_sim(embedding_pergunta, embeddings_faq)
-        indice_mais_proximo = torch.argmax(similaridades).item()
-        resposta = faq[indice_mais_proximo]["resposta"]
-        session["ultimo_indice"] = indice_mais_proximo
+        max_similaridade, indice_mais_proximo = torch.max(similaridades, dim=1)
 
-    # Atualiza histórico
+        if max_similaridade.item() < 0.5:
+            resposta = "Desculpe, só posso responder perguntas relacionadas ao projeto Oketá. 🌱"
+        else:
+            resposta = faq[indice_mais_proximo]["resposta"]
+            session["ultimo_indice"] = indice_mais_proximo.item()
+
     session["historico"].append({"pergunta": pergunta_usuario, "resposta": resposta})
     return jsonify({"resposta": resposta})
-
 
 if __name__ == "__main__":
     app.run(debug=True)
